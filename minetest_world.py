@@ -5,6 +5,7 @@ import os
 import sqlite3
 import struct
 import zlib
+import copy
 
 
 def get_block_as_integer(x, y, z):
@@ -115,6 +116,8 @@ class MinetestWorld(object):
         with open(os.path.join(self.path, 'world.mt'), 'w') as f:
             f.write(
                 'gameid = dwarftest\n'
+                'creative_mode = true\n'
+                'enable_damage = false\n'
                 'backend = sqlite3\n'
                 'player_backend = sqlite3\n'
                 'auth_backend = sqlite3\n'
@@ -185,6 +188,7 @@ class MinetestWorld(object):
         assert len(nodes) == 4096
 
         num_name_id_mappings = {}
+        nodes = copy.deepcopy(nodes)
         for n in nodes:
             if n[0] not in num_name_id_mappings:
                 num_name_id_mappings[n[0]] = len(num_name_id_mappings)
@@ -273,3 +277,17 @@ class MinetestWorld(object):
         else:
             self.map_sqlite_cursor.execute('INSERT INTO blocks(pos,data) VALUES(?,?)', (block_id, block))
 
+
+if __name__ == '__main__':
+    mw = MinetestWorld('./world', allow_overwrite=True)
+
+    for x in range(-2, 2):
+        for y in range(-2, 2):
+            for z in range(-3, 3):
+                nodes = [['default:stone', 0, 0] for i in range(16*16*16)]
+
+                block = mw.build_map_block(nodes)
+
+                mw.write_block(x, y, z, block)
+
+    mw.close_sql_connections()
