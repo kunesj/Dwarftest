@@ -5,7 +5,7 @@
 class BlockTransformer(object):
     # size of DF objects in DF tiles
     DF_BLOCK_TILE_SIZE = (16, 16, 16)
-    DF_REGION_TILE_SIZE = (48, 48, 48)
+    DF_REGION_TILE_SIZE = (48, 48, 1)
     # size of MT objects in MT nodes
     MT_BLOCK_NODE_SIZE = (16, 16, 16)
 
@@ -27,10 +27,10 @@ class BlockTransformer(object):
         )
 
         # absolute DF tile position
-        df_pos = (
+        df_pos = (  # NOTE: MT pos is (X, Z, Y)
             region_pos[0] * self.DF_REGION_TILE_SIZE[0] + tile_pos[0],
-            region_pos[1] * self.DF_REGION_TILE_SIZE[1] + tile_pos[1],
             region_pos[2] * self.DF_REGION_TILE_SIZE[2] + tile_pos[2],
+            region_pos[1] * self.DF_REGION_TILE_SIZE[1] + tile_pos[1],
         )
 
         # convert to MT node position
@@ -42,34 +42,34 @@ class BlockTransformer(object):
 
         return mt_pos
 
-    # def mt2df_pos(self, mt_pos):
-    #     # convert to absolute DF tile position
-    #     df_pos = (
-    #         int(mt_pos[0] / self.block_scale[0]),
-    #         int(mt_pos[1] / self.block_scale[1]),
-    #         int(mt_pos[2] / self.block_scale[2]),
-    #     )
-    #
-    #     # calculate region and tile position
-    #     region_pos = (
-    #         int(df_pos[0] / self.DF_REGION_TILE_SIZE[0]),
-    #         int(df_pos[1] / self.DF_REGION_TILE_SIZE[1]),
-    #         int(df_pos[2] / self.DF_REGION_TILE_SIZE[2]),
-    #     )
-    #     tile_pos = (
-    #         df_pos[0] - region_pos[0] * self.DF_REGION_TILE_SIZE[0],
-    #         df_pos[1] - region_pos[1] * self.DF_REGION_TILE_SIZE[1],
-    #         df_pos[2] - region_pos[2] * self.DF_REGION_TILE_SIZE[2],
-    #     )
-    #
-    #     # apply region offset
-    #     region_pos = (
-    #         region_pos[0] + self.df_region_offset[0],
-    #         region_pos[1] + self.df_region_offset[1],
-    #         region_pos[2] + self.df_region_offset[2],
-    #     )
-    #
-    #     return region_pos, tile_pos
+    def mt2df_pos(self, mt_pos):  # TODO: not tested
+        # convert to absolute DF tile position
+        df_pos = (  # NOTE: MT pos is (X, Z, Y)
+            int(mt_pos[0] / self.block_scale[0]),
+            int(mt_pos[2] / self.block_scale[2]),
+            int(mt_pos[1] / self.block_scale[1]),
+        )
+
+        # calculate region and tile position
+        region_pos = (
+            int(df_pos[0] / self.DF_REGION_TILE_SIZE[0]),
+            int(df_pos[1] / self.DF_REGION_TILE_SIZE[1]),
+            int(df_pos[2] / self.DF_REGION_TILE_SIZE[2]),
+        )
+        tile_pos = (
+            df_pos[0] - region_pos[0] * self.DF_REGION_TILE_SIZE[0],
+            df_pos[1] - region_pos[1] * self.DF_REGION_TILE_SIZE[1],
+            df_pos[2] - region_pos[2] * self.DF_REGION_TILE_SIZE[2],
+        )
+
+        # apply region offset
+        region_pos = (
+            region_pos[0] + self.df_region_offset[0],
+            region_pos[1] + self.df_region_offset[1],
+            region_pos[2] + self.df_region_offset[2],
+        )
+
+        return region_pos, tile_pos
 
     def mt2mt_block_pos(self, mt_pos):
         mt_block_pos = (
