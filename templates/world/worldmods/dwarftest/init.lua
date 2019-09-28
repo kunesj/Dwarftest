@@ -16,15 +16,17 @@ dwarftest = {}
 minetest.register_item(":", {
 	type = "none",
 	wield_image = "wieldhand.png",
-	wield_scale = {x=1,y=1,z=2.5},
+	wield_scale = {x=1, y=1, z=2.5},
 	tool_capabilities = {
 		full_punch_interval = 1.0,
 		max_drop_level = 0,
 		groupcaps = {
-			fleshy = {times={[2]=2.00, [3]=1.00}, uses=0, maxlevel=1},
-			crumbly = {times={[2]=3.00, [3]=0.70}, uses=0, maxlevel=1},
-			snappy = {times={[3]=0.40}, uses=0, maxlevel=1},
-			oddly_breakable_by_hand = {times={[1]=7.00,[2]=4.00,[3]=1.40}, uses=0, maxlevel=3},
+			crumbly = {times = {0.5, 0.5, 0.5}, uses = 0, maxlevel = 256},
+			cracky = {times = {0.5, 0.5, 0.5}, uses = 0, maxlevel = 256},
+			snappy = {times = {0.5, 0.5, 0.5}, uses = 0, maxlevel = 256},
+			choppy = {times = {0.5, 0.5, 0.5}, uses = 0, maxlevel = 256},
+			fleshy = {times = {0.5, 0.5, 0.5}, uses = 0, maxlevel = 256},
+			oddly_breakable_by_hand = {times = {0.5, 0.5, 0.5}, uses = 0, maxlevel = 256},
 		},
 		damage_groups = {fleshy=1},
 	}
@@ -324,23 +326,18 @@ material_list = minetest.parse_json(material_list_json)
 
 for i = 1, #material_list do
 	local mat = material_list[i]
---	minetest.log("error", minetest.serialize(mat));
+	local tex_name = mat.mt_id:gsub("%:", "_")..".png"
 
-	if mat.mt_id ~= 'air' then
-		local tex_name = mat.mt_id:gsub("%:", "_")..".png"
-
-		minetest.register_node(mat.mt_id, {
-			description = mat.name,
-			tiles = {tex_name},
-			-- https://rubenwardy.com/minetest_modding_book/en/items/nodes_items_crafting.html#tools-capabilities-and-dig-types
-			groups = {
-				oddly_breakable_by_hand = 1,
-			},
-			is_ground_content = false, -- If True, allows cave generation to replace it
-			sounds = dwarftest.node_sound_hard(),
-		})
-
-	end
+	minetest.register_node(mat.mt_id, {
+		description = mat.name,
+		tiles = {tex_name},
+		-- https://rubenwardy.com/minetest_modding_book/en/items/nodes_items_crafting.html#tools-capabilities-and-dig-types
+		groups = {
+			oddly_breakable_by_hand = 1,
+		},
+		is_ground_content = false, -- If True, allows cave generation to replace it
+		sounds = dwarftest.node_sound_hard(),
+	})
 end
 
 ---

@@ -36,6 +36,10 @@ def main():  # TODO: map is flopped on X axis!!!
         action='store_true',
     )
     parser.add_argument(
+        '--skip_block_build',
+        action='store_true',
+    )
+    parser.add_argument(
         '--path',
         default='./build',
     )
@@ -127,7 +131,11 @@ def main():  # TODO: map is flopped on X axis!!!
 
     path_world = os.path.join(path_worlds, world_name)
     mw = MinetestWorld(path_world, allow_overwrite=True)
-    dt = DwarftestTransformer(mw, df_region_offset=(world_map.center_x, world_map.center_y, world_map.center_z))
+    dt = DwarftestTransformer(
+        mw,
+        df_region_offset=(world_map.center_x, world_map.center_y, world_map.center_z),
+        complex_block_scale={'tile_x': 2, 'tile_y': 2, 'tile_z_floor': 1, 'tile_z_wall': 2}
+    )
 
     print('-------------------------------------------')
 
@@ -136,67 +144,75 @@ def main():  # TODO: map is flopped on X axis!!!
     print('Getting block types etc..')
 
     # enums, _ = rpc.call_method_dict('ListEnums')
-    material_list, _ = rpc.call_method_dict('GetMaterialList')
-    # tiletype_list, _ = rpc.call_method_dict('GetTiletypeList')
 
+    material_list, _ = rpc.call_method_dict('GetMaterialList')
     dt.load_df_material_list(material_list['materialList'])
 
+    tiletype_list, _ = rpc.call_method_dict('GetTiletypeList')
+    dt.load_df_tiletype_list(tiletype_list['tiletypeList'])
+
     if not args.skip_material_build:
+        print('Building material mod')
         dt.build_material_mod()
 
     print('-------------------------------------------')
 
     # process tiles/nodes
 
-    print('Processing DF Blocks...')
+    if not args.skip_block_build:
 
-    region_pos = (map_info.block_pos_x, map_info.block_pos_y, map_info.block_pos_z)
-    for x in range(map_info.block_size_x):
-        for y in range(map_info.block_size_y):
-            print('Block x={} y={} z=0-{}'.format(x, y, map_info.block_size_z))
+        print('Processing DF Blocks...')
 
-            # NOTE: reading more than 16*16*1=256 tiles causes problems
-            for z in range(map_info.block_size_z):
-                path_dump_blocks_this = os.path.join(path_dump_blocks, '{}_{}_{}.json'.format(x, y, z))
+        region_pos = (map_info.block_pos_x, map_info.block_pos_y, map_info.block_pos_z)
+        for x in range(map_info.block_size_x):
+            for y in range(map_info.block_size_y):
+                print('Block x={} y={} z=0-{}'.format(x, y, map_info.block_size_z))
 
-                if args.load_dump:
-                    with open(path_dump_blocks_this, 'r') as f:
-                        block_list = json.loads(f.read())
-                else:
-                    block_list, _ = rpc.call_method_dict('GetBlockList', {
-                        # 'blocksNeeded': 1,
-                        'minX': x, 'maxX': x+1,
-                        'minY': y, 'maxY': y+1,
-                        'minZ': z, 'maxZ': z+1,
-                    })
-                if args.save_dump:
-                    with open(path_dump_blocks_this, 'w') as f:
-                        f.write(json.dumps(block_list))
+                # NOTE: reading more than 16*16*1=256 tiles causes problems
+                for z in range(map_info.block_size_z):
+                    path_dump_blocks_this = os.path.join(path_dump_blocks, '{}_{}_{}.json'.format(x, y, z))
 
-                dt.parse_df_blocks(region_pos, block_list['mapBlocks'])
+                    if args.load_dump:
+                        with open(path_dump_blocks_this, 'r') as f:
+                            block_list = json.loads(f.read())
+                    else:
+                        block_list, _ = rpc.call_method_dict('GetBlockList', {
+                            # 'blocksNeeded': 1,
+                            'minX': x, 'maxX': x+1,
+                            'minY': y, 'maxY': y+1,
+                            'minZ': z, 'maxZ': z+1,
+                        })
+                    if args.save_dump:
+                        with open(path_dump_blocks_this, 'w') as f:
+                            f.write(json.dumps(block_list))
 
-    # print('Processing DF EmbarkTiles..')
-    #
-    # for x in range(embark_info.region_size_x):
-    #     for y in range(embark_info.region_size_y):
-    #         print('EmbarkTile x={} y={}'.format(x, y))
-    #
-    #         embark_tile, text = rpc.call_method_dict('GetEmbarkTile', {'wantX': x, 'wantY': y})
-    #         if not embark_tile.get('isValid'):
-    #             raise Exception('EmbarkTile is not valid')
-    #
-    #         region_pos = (embark_tile['worldX'], embark_tile['worldY'], embark_tile['worldZ'])
-    #         dt.parse_df_tile_layers(region_pos, embark_tile['tileLayer'])
-    #
-    #         dt.dump_mt_blocks()
+                    dt.parse_df_blocks(region_pos, block_list['mapBlocks'])
 
-    print('Completing partial blocks')
+                # save completely filled block to MT database
+                dt.dump_mt_blocks()
 
-    dt.complete_mt_blocks()
+        # print('Processing DF EmbarkTiles..')
+        #
+        # for x in range(embark_info.region_size_x):
+        #     for y in range(embark_info.region_size_y):
+        #         print('EmbarkTile x={} y={}'.format(x, y))
+        #
+        #         embark_tile, text = rpc.call_method_dict('GetEmbarkTile', {'wantX': x, 'wantY': y})
+        #         if not embark_tile.get('isValid'):
+        #             raise Exception('EmbarkTile is not valid')
+        #
+        #         region_pos = (embark_tile['worldX'], embark_tile['worldY'], embark_tile['worldZ'])
+        #         dt.parse_df_tile_layers(region_pos, embark_tile['tileLayer'])
+        #
+        #         dt.dump_mt_blocks()
 
-    print('Saving blocks to database')
+        print('Completing partial blocks')
 
-    dt.dump_mt_blocks()
+        dt.complete_mt_blocks()
+
+        print('Saving blocks to database')
+
+        dt.dump_mt_blocks()
 
     print('-------------------------------------------')
 

@@ -27,19 +27,35 @@ class DwarftestTransformer(object):
     MT_LAVA_CONTENT_ID = MT_CONTENT_ID_PREFIX + 'lava_source'
 
     # DF blacklisted mat types
-    DF_BLACKLISTED_MAT_TYPES = ['AIR', 'CREATURE']
+    DF_BLACKLISTED_MAT_TYPES = ['AIR', 'UNKNOWN', 'CREATURE']
 
     # templates
     TEXTURE_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), './templates/textures')
 
-    def __init__(self, minetest_world, df_region_offset=(0, 0, 0), block_scale=(1, 1, 1)):
+    def __init__(self, minetest_world, df_region_offset=(0, 0, 0), complex_block_scale=None):
+
         self.minetest_world = minetest_world
         self.df_region_offset = df_region_offset  # used to move center of DF world to 0,0,0 in MT
-        self.block_scale = block_scale  # Size of one DF tile/block in Minetest nodes
 
-        # DB of unfinished MT blocks
+        # Size of one DF tile/block in Minetest nodes
+
+        self.complex_block_scale = complex_block_scale or {
+            'tile_x': 1, 'tile_y': 1, 'tile_z_floor': 0, 'tile_z_wall': 1
+        }
+        self.block_scale = (
+            self.complex_block_scale['tile_x'],
+            self.complex_block_scale['tile_y'],
+            self.complex_block_scale['tile_z_floor'] + self.complex_block_scale['tile_z_wall'],
+        )
+
+        # List of unfinished MT blocks
 
         self.mt_blocks = {}  # key: mt_block_pos
+
+        # tile types
+
+        self.tiletype_list = []
+        self.tiletype_df_lookup = {}
 
         # material list
 
@@ -55,6 +71,15 @@ class DwarftestTransformer(object):
         self.material_list.append(mt_air_mat)
         self.material_df_lookup[(-1, -1)] = mt_air_mat
 
+        mt_unknown_mat = {
+            'name': 'unknown',
+            'color': (0, 0, 0),
+            'df_id': 'UNKNOWN',
+            'mt_id': self.MT_UNKNOWN_CONTENT_ID,
+        }
+        self.material_list.append(mt_unknown_mat)
+        self.material_df_lookup[(None, None)] = mt_unknown_mat
+
     # coordinates conversions
 
     def df2mt_pos(self, region_pos, tile_pos):
@@ -66,49 +91,20 @@ class DwarftestTransformer(object):
         )
 
         # absolute DF tile position
-        df_pos = (  # NOTE: MT pos is (X, Z, Y)
+        df_pos = (
             region_pos[0] * self.DF_REGION_TILE_SIZE[0] + tile_pos[0],
-            region_pos[2] * self.DF_REGION_TILE_SIZE[2] + tile_pos[2],
             region_pos[1] * self.DF_REGION_TILE_SIZE[1] + tile_pos[1],
+            region_pos[2] * self.DF_REGION_TILE_SIZE[2] + tile_pos[2],
         )
 
         # convert to MT node position
-        mt_pos = (
+        mt_pos = (  # NOTE: MT pos is (X, Z, Y)
             df_pos[0] * self.block_scale[0],
-            df_pos[1] * self.block_scale[1],
             df_pos[2] * self.block_scale[2],
+            df_pos[1] * self.block_scale[1],
         )
 
         return mt_pos
-
-    # def mt2df_pos(self, mt_pos):  # TODO: not tested
-    #     # convert to absolute DF tile position
-    #     df_pos = (  # NOTE: MT pos is (X, Z, Y)
-    #         int(mt_pos[0] / self.block_scale[0]),
-    #         int(mt_pos[2] / self.block_scale[2]),
-    #         int(mt_pos[1] / self.block_scale[1]),
-    #     )
-    #
-    #     # calculate region and tile position
-    #     region_pos = (
-    #         int(df_pos[0] / self.DF_REGION_TILE_SIZE[0]),
-    #         int(df_pos[1] / self.DF_REGION_TILE_SIZE[1]),
-    #         int(df_pos[2] / self.DF_REGION_TILE_SIZE[2]),
-    #     )
-    #     tile_pos = (
-    #         df_pos[0] - region_pos[0] * self.DF_REGION_TILE_SIZE[0],
-    #         df_pos[1] - region_pos[1] * self.DF_REGION_TILE_SIZE[1],
-    #         df_pos[2] - region_pos[2] * self.DF_REGION_TILE_SIZE[2],
-    #     )
-    #
-    #     # apply region offset
-    #     region_pos = (
-    #         region_pos[0] + self.df_region_offset[0],
-    #         region_pos[1] + self.df_region_offset[1],
-    #         region_pos[2] + self.df_region_offset[2],
-    #     )
-    #
-    #     return region_pos, tile_pos
 
     def mt2mt_block_pos(self, mt_pos):
         mt_block_pos = (
@@ -179,6 +175,29 @@ class DwarftestTransformer(object):
 
         self.minetest_world.commit_sql_connections()
 
+    # Tile Types
+
+    def load_df_tiletype_list(self, df_tiletype_list):
+        for df_tile_type in df_tiletype_list:
+            tiletype = {
+                'df_id': df_tile_type['id'],
+                'name': df_tile_type['name'],
+                'caption': df_tile_type['caption'],
+                'shape': df_tile_type['shape'],
+                'special': df_tile_type['special'],
+                'material': df_tile_type['material'],
+                'variant': df_tile_type['variant'],
+                'direction': df_tile_type['direction'],
+            }
+            self.tiletype_list.append(tiletype)
+            self.tiletype_df_lookup[tiletype['df_id']] = tiletype
+
+    def get_tiletype(self, df_id):
+        if df_id in self.tiletype_df_lookup:
+            return self.tiletype_df_lookup[df_id]
+        else:
+            raise Exception('Could not find tiletype with id {}'.format(df_id))
+
     # Materials
 
     def load_df_material_list(self, df_mat_list):
@@ -220,17 +239,23 @@ class DwarftestTransformer(object):
             not os.path.exists(dwarftest_mod_textures_path):
             raise Exception('Could not find Dwarftest world mod paths!')
 
+        # filter material list
+        material_list = []
+        for mat in self.material_list:
+            mat_type_str = mat['df_id'].split(':')[0]
+            if mat_type_str in self.DF_BLACKLISTED_MAT_TYPES:
+                continue
+            material_list.append(mat)
+
         # fill material_list.json
 
         with open(dwarftest_mod_material_list_path, 'w') as f:
-            f.write(json.dumps(self.material_list))
+            f.write(json.dumps(material_list))
 
         # generate node textures
 
-        for mat in self.material_list:
+        for mat in material_list:
             mat_type_str = mat['df_id'].split(':')[0]
-            if mat_type_str == 'AIR':
-                continue
 
             # init base color image
             pixel_data = np.zeros((16, 16, 4), dtype=np.uint8)
@@ -250,31 +275,92 @@ class DwarftestTransformer(object):
             tex_name = mat['mt_id'].replace(':', '_') + '.png'
             img.save(os.path.join(dwarftest_mod_textures_path, tex_name))
 
+    def get_material(self, mat_dict=None, mat_tuple=None):
+        if mat_dict:
+            mat_tuple = (mat_dict['matType'], mat_dict['matIndex'])
+        assert mat_tuple
+
+        if mat_tuple in self.material_df_lookup:
+            return self.material_df_lookup[mat_tuple]
+        else:
+            _logger.error('Could not find material for {}'.format(mat_tuple))
+            return self.material_df_lookup[(None, None)]
+
     # parse DF map
 
-    # def parse_df_tile_layers(self, region_pos, tile_layers):  # TODO: might be wrong use of data?
-    #     """
-    #     tile_layer = {
-    #         'matTypeTable': list of AIR/LIQUID/PLANT/INORGANIC,
-    #         'matSubtypeTable': list of material subtype ids,
-    #         'tileShapeTable': always empty list?,
-    #         'tileColorTable': always empty list?,
-    #     }
-    #     """
-    #     for z, tl in enumerate(tile_layers):
-    #         if len(tl['matTypeTable']) != self.DF_REGION_TILE_SIZE[0]*self.DF_REGION_TILE_SIZE[1]:
-    #             raise Exception('Unexpected size {} of tile layer'.format(len(tl['matTypeTable'])))
-    #
-    #         for i, (mat_type, mat_subtype) in enumerate(zip(tl['matTypeTable'], tl['matSubtypeTable'])):
-    #             content_id = self.MT_AIR_CONTENT_ID if mat_type == 'AIR' else self.MT_UNKNOWN_CONTENT_ID  # TODO
-    #             mt_node = (content_id, 0, 0)
-    #
-    #             y = int(i / self.DF_REGION_TILE_SIZE[1])
-    #             x = i - (y * self.DF_REGION_TILE_SIZE[1])
-    #             tile_pos = (x, y, z)
-    #
-    #             mt_pos = self.df2mt_pos(region_pos, tile_pos)
-    #             self.set_mt_node(mt_pos, mt_node)
+    def df_tile_to_mt_nodes(self, tiletype, material, water_height, lava_height):
+        """
+        DF tile includes info about wall-level and floor-level. roof-level is defined by floor-level of tile above it. (maybe?)
+
+        This function should eventually be used to generate other shapes than just wall/floor.
+
+        Useful sources:
+            https://github.com/DFHack/dfhack/blob/8a1979b8a7aecee299c0d74720ee37eeaef9fee5/plugins/reveal.cpp#L331
+
+        :returns: [(node_pos_difference, mt_node), ...]
+        """
+        converted_nodes = []
+
+        #
+        # Detect shape
+        #
+
+        # Walls
+        if tiletype['shape'] in ['WALL', 'FORTIFICATION', ]:
+            fill_wall = True
+            fill_floor = True
+            # TODO: fortification should change block "variant" to something "transparent"
+
+        # Open space
+        elif tiletype['shape'] in ['NONE', 'EMPTY', 'RAMP_TOP', 'STAIR_UPDOWN', 'STAIR_DOWN', 'BROOK_TOP']:
+            fill_wall = False
+            fill_floor = False
+
+        # Floors
+        elif tiletype['shape'] in ['STAIR_UP', 'RAMP', 'FLOOR', 'BRANCH', 'TRUNK_BRANCH', 'TWIG',
+                                   'SAPLING', 'SHRUB', 'BOULDER', 'PEBBLES', 'BROOK_BED', 'ENDLESS_PIT']:
+            fill_wall = False
+            fill_floor = True
+
+        else:
+            raise Exception('Unexpected tile shape "{}"'.format(tiletype['shape']))
+
+        #
+        # Detect MT content ids
+        #
+
+        if fill_wall:
+            wall_content_id = material['mt_id']
+        elif water_height:
+            wall_content_id = self.MT_WATER_CONTENT_ID
+        elif lava_height:
+            wall_content_id = self.MT_LAVA_CONTENT_ID
+        else:
+            wall_content_id = self.MT_AIR_CONTENT_ID
+
+        if fill_floor:
+            floor_content_id = material['mt_id']
+        elif water_height:
+            floor_content_id = self.MT_WATER_CONTENT_ID
+        elif lava_height:
+            floor_content_id = self.MT_LAVA_CONTENT_ID
+        else:
+            floor_content_id = self.MT_AIR_CONTENT_ID
+
+        #
+        # Build shape
+        #
+
+        for x in range(self.block_scale[0]):
+            for y in range(self.block_scale[1]):
+                for z in range(self.block_scale[2]):
+                    if z < self.complex_block_scale['tile_z_floor']:
+                        mt_node = (floor_content_id, 0, 0)
+                    else:
+                        mt_node = (wall_content_id, 0, 0)
+                    converted_nodes.append(((x, z, y), mt_node))
+
+        return converted_nodes
 
     def parse_df_blocks(self, region_pos, block_list):
         """
@@ -327,30 +413,22 @@ class DwarftestTransformer(object):
                 )
 
             for i in range(256):
-                mat_tuple = (block['materials'][i]['matType'], block['materials'][i]['matIndex'])
-                if mat_tuple in self.material_df_lookup:
-                    content_id = self.material_df_lookup[mat_tuple]['mt_id']
-                else:
-                    _logger.error('Could not find material for {}'.format(mat_tuple))
-                    content_id = self.MT_UNKNOWN_CONTENT_ID
-                mt_node = (content_id, 0, 0)
+                # parse "tile" values
 
-                if block['water'][i]:
-                    mt_node = (self.MT_WATER_CONTENT_ID, 0, 0)
-                if block['magma'][i]:
-                    mt_node = (self.MT_LAVA_CONTENT_ID, 0, 0)
+                tiletype = self.get_tiletype(block['tiles'][i])
+                mat = self.get_material(mat_dict=block['materials'][i])
+                # layer_mat = self.get_material(mat_dict=block['layerMaterials'][i])  # useless?
+                # vain_mat = self.get_material(mat_dict=block['veinMaterials'][i])  # useless?
+                # base_mat = self.get_material(mat_dict=block['baseMaterials'][i])  # ground floor?
+                # cons_mat = self.get_material(mat_dict=block['constructionItems'][i])  # mat of construction
+                water_height = block['water'][i]
+                lava_height = block['magma'][i]
 
-                # if block['water']:  # TODO: temp
-                #     print(
-                #         i,
-                #         block['tiles'][i],
-                #         block['materials'][i],
-                #         block['layerMaterials'][i],
-                #         block['veinMaterials'][i],
-                #         block['baseMaterials'][i],
-                #         block['constructionItems'][i],
-                #         block['buildings'][i]
-                #     )
+                # convert tile to nodes
+
+                converted_nodes = self.df_tile_to_mt_nodes(tiletype, mat, water_height, lava_height)
+
+                # set nudes
 
                 tile_pos = (
                     int(i % self.DF_BLOCK_TILE_SIZE[0]) + block['mapX'],
@@ -359,4 +437,34 @@ class DwarftestTransformer(object):
                 )
 
                 mt_pos = self.df2mt_pos(region_pos, tile_pos)
-                self.set_mt_node(mt_pos, mt_node)
+                for node_pos, mt_node in converted_nodes:
+                    mt_node_pos = (
+                        mt_pos[0] + node_pos[0],
+                        mt_pos[1] + node_pos[1],
+                        mt_pos[2] + node_pos[2],
+                    )
+                    self.set_mt_node(mt_node_pos, mt_node)
+
+    # def parse_df_tile_layers(self, region_pos, tile_layers):  # TODO: might be wrong use of data?
+    #     """
+    #     tile_layer = {
+    #         'matTypeTable': list of AIR/LIQUID/PLANT/INORGANIC,
+    #         'matSubtypeTable': list of material subtype ids,
+    #         'tileShapeTable': always empty list?,
+    #         'tileColorTable': always empty list?,
+    #     }
+    #     """
+    #     for z, tl in enumerate(tile_layers):
+    #         if len(tl['matTypeTable']) != self.DF_REGION_TILE_SIZE[0]*self.DF_REGION_TILE_SIZE[1]:
+    #             raise Exception('Unexpected size {} of tile layer'.format(len(tl['matTypeTable'])))
+    #
+    #         for i, (mat_type, mat_subtype) in enumerate(zip(tl['matTypeTable'], tl['matSubtypeTable'])):
+    #             content_id = self.MT_AIR_CONTENT_ID if mat_type == 'AIR' else self.MT_UNKNOWN_CONTENT_ID  # TODO
+    #             mt_node = (content_id, 0, 0)
+    #
+    #             y = int(i / self.DF_REGION_TILE_SIZE[1])
+    #             x = i - (y * self.DF_REGION_TILE_SIZE[1])
+    #             tile_pos = (x, y, z)
+    #
+    #             mt_pos = self.df2mt_pos(region_pos, tile_pos)
+    #             self.set_mt_node(mt_pos, mt_node)
