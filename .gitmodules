@@ -1,0 +1,3 @@
+[submodule "DFHackRPC"]
+	path = DFHackRPC
+	url = https://github.com/kunesj/DFHackRPC.git

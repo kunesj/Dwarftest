@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 # encoding: utf-8
-from dfhack_rpc import DFHackRPC
-from minetest_world import MinetestWorld
-from dwarftest_transformer import DwarftestTransformer
 
 import logging
 import argparse
 import json
+import sys
 import os
 import shutil
+
+from minetest_world import MinetestWorld
+from dwarftest_transformer import DwarftestTransformer
+
+sys.path.append(os.path.join(os.path.dirname(__file__), './DFHackRPC'))
+from dfhack_rpc import DFHackRPC
 
 
 def main():  # TODO: map is flopped on X axis!!!
