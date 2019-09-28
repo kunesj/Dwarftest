@@ -130,20 +130,26 @@ class DwarftestTransformer(object):
     # block manipulation
 
     def set_mt_node(self, mt_pos, val):
+        """
+        :param mt_pos: minetest position (x, y, z)
+        :param val: (content_id, param1, param2)
+        """
         mt_block_pos, mt_block_node_pos, mt_block_node_index = self.mt2mt_block_pos(mt_pos)
 
         # init not used block
         if mt_block_pos not in self.mt_blocks:
-            self.mt_blocks[mt_block_pos] = [None, ] * (
-                    self.MT_BLOCK_NODE_SIZE[0]*self.MT_BLOCK_NODE_SIZE[1]*self.MT_BLOCK_NODE_SIZE[2]
+            self.mt_blocks[mt_block_pos] = np.zeros(
+                (self.MT_BLOCK_NODE_SIZE[0]*self.MT_BLOCK_NODE_SIZE[1]*self.MT_BLOCK_NODE_SIZE[2], ),
+                dtype=self.minetest_world.BLOCK_NUMPY_DTYPE
             )
+            self.mt_blocks[mt_block_pos][:] = (None, 0, 0)
 
         # detect if we already wrote block to DB
         if self.mt_blocks[mt_block_pos] is None:
             raise Exception('Block was already dumped to database')
 
         # detect out of range
-        if mt_block_node_index >= len(self.mt_blocks[mt_block_pos]) or mt_block_node_index < 0:
+        if mt_block_node_index >= self.mt_blocks[mt_block_pos].size or mt_block_node_index < 0:
             raise Exception('Node index {} is out of range!'.format(mt_block_node_index))
 
         # set node value
@@ -151,18 +157,26 @@ class DwarftestTransformer(object):
 
     def complete_mt_blocks(self):
         for mt_block_pos in self.mt_blocks:
-            if not self.mt_blocks[mt_block_pos] or None not in self.mt_blocks[mt_block_pos]:
+            if self.mt_blocks[mt_block_pos] is None:
                 continue
-            self.mt_blocks[mt_block_pos] = [(x or [self.MT_AIR_CONTENT_ID, 0, 0]) for x in self.mt_blocks[mt_block_pos]]
+            for i in range(self.mt_blocks[mt_block_pos].size):
+                if self.mt_blocks[mt_block_pos][i]['content_id'] is not None:
+                    continue
+                self.mt_blocks[mt_block_pos][i] = (self.MT_AIR_CONTENT_ID, 0, 0)
         # TODO: try to spread defined nodes into undefined area
 
     def dump_mt_blocks(self):
         for mt_block_pos in self.mt_blocks:
-            if self.mt_blocks[mt_block_pos] and None not in self.mt_blocks[mt_block_pos]:
-                block = self.minetest_world.build_map_block(self.mt_blocks[mt_block_pos])
-                self.minetest_world.write_block(mt_block_pos[0], mt_block_pos[1], mt_block_pos[2], block)
-                self.mt_blocks[mt_block_pos] = None
-                _logger.debug('Block {} dumped into database'.format(mt_block_pos))
+            if self.mt_blocks[mt_block_pos] is None:
+                continue
+            if None in self.mt_blocks[mt_block_pos]['content_id']:
+                continue
+
+            _logger.debug('Saving block {} into database'.format(mt_block_pos))
+            block = self.minetest_world.build_map_block(self.mt_blocks[mt_block_pos])
+            self.minetest_world.write_block(mt_block_pos[0], mt_block_pos[1], mt_block_pos[2], block)
+            self.mt_blocks[mt_block_pos] = None
+
         self.minetest_world.commit_sql_connections()
 
     # Materials
@@ -238,15 +252,6 @@ class DwarftestTransformer(object):
 
     # parse DF map
 
-    def build_mt_node(self, mat_tuple):
-        if mat_tuple in self.material_df_lookup:
-            content_id = self.material_df_lookup[mat_tuple]['mt_id']
-        else:
-            _logger.error('Could not find material for {}'.format(mat_tuple))
-            content_id = self.MT_UNKNOWN_CONTENT_ID
-
-        return [content_id, 0, 0]
-
     # def parse_df_tile_layers(self, region_pos, tile_layers):  # TODO: might be wrong use of data?
     #     """
     #     tile_layer = {
@@ -262,7 +267,7 @@ class DwarftestTransformer(object):
     #
     #         for i, (mat_type, mat_subtype) in enumerate(zip(tl['matTypeTable'], tl['matSubtypeTable'])):
     #             content_id = self.MT_AIR_CONTENT_ID if mat_type == 'AIR' else self.MT_UNKNOWN_CONTENT_ID  # TODO
-    #             mt_node = [content_id, 0, 0]
+    #             mt_node = (content_id, 0, 0)
     #
     #             y = int(i / self.DF_REGION_TILE_SIZE[1])
     #             x = i - (y * self.DF_REGION_TILE_SIZE[1])
@@ -323,12 +328,29 @@ class DwarftestTransformer(object):
 
             for i in range(256):
                 mat_tuple = (block['materials'][i]['matType'], block['materials'][i]['matIndex'])
-                mt_node = self.build_mt_node(mat_tuple)
+                if mat_tuple in self.material_df_lookup:
+                    content_id = self.material_df_lookup[mat_tuple]['mt_id']
+                else:
+                    _logger.error('Could not find material for {}'.format(mat_tuple))
+                    content_id = self.MT_UNKNOWN_CONTENT_ID
+                mt_node = (content_id, 0, 0)
 
                 if block['water'][i]:
-                    mt_node = [self.MT_WATER_CONTENT_ID, 0, 0]
+                    mt_node = (self.MT_WATER_CONTENT_ID, 0, 0)
                 if block['magma'][i]:
-                    mt_node = [self.MT_LAVA_CONTENT_ID, 0, 0]
+                    mt_node = (self.MT_LAVA_CONTENT_ID, 0, 0)
+
+                # if block['water']:  # TODO: temp
+                #     print(
+                #         i,
+                #         block['tiles'][i],
+                #         block['materials'][i],
+                #         block['layerMaterials'][i],
+                #         block['veinMaterials'][i],
+                #         block['baseMaterials'][i],
+                #         block['constructionItems'][i],
+                #         block['buildings'][i]
+                #     )
 
                 tile_pos = (
                     int(i % self.DF_BLOCK_TILE_SIZE[0]) + block['mapX'],

@@ -6,7 +6,7 @@ import shutil
 import sqlite3
 import struct
 import zlib
-import copy
+import numpy as np
 
 
 def get_block_as_integer(x, y, z):
@@ -52,6 +52,8 @@ class MinetestWorld(object):
     Incorrect light/shadow problems can be fixed by running:
         \fixlight (x1, y1, z1) (x2, y2, z2)
     """
+    GAME_ID = 'dwarftest'
+    BLOCK_NUMPY_DTYPE = np.dtype([('content_id', 'object'), ('param1', np.uint8), ('param2', np.uint8)])
     TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), './templates/world')
 
     # Open/Close
@@ -120,12 +122,12 @@ class MinetestWorld(object):
     def init_world_mt(self):
         with open(os.path.join(self.path, 'world.mt'), 'w') as f:
             f.write(
-                'gameid = dwarftest\n'
+                'gameid = {}\n'
                 'creative_mode = true\n'
                 'enable_damage = false\n'
                 'backend = sqlite3\n'
                 'player_backend = sqlite3\n'
-                'auth_backend = sqlite3\n'
+                'auth_backend = sqlite3\n'.format(self.GAME_ID)
             )
 
     def init_auth_sqlite(self):
@@ -169,9 +171,11 @@ class MinetestWorld(object):
 
     def build_map_block(self, nodes):
         """
-        :param nodes: [[content_id, param1, param2], ...]
+        :param nodes: numpy array of length 4096 and dtype of self.BLOCK_NUMPY_DTYPE
         :return: bytes
         """
+        assert nodes.size == 4096
+        nodes = nodes.copy()
         block = b''
 
         # u8 version
@@ -190,19 +194,18 @@ class MinetestWorld(object):
         block += struct.pack('>B', 2)
 
         # zlib-compressed node data
-        assert len(nodes) == 4096
+
 
         num_name_id_mappings = {}
-        nodes = copy.deepcopy(nodes)
         for n in nodes:
-            if n[0] not in num_name_id_mappings:
-                num_name_id_mappings[n[0]] = len(num_name_id_mappings)
-            n[0] = num_name_id_mappings[n[0]]
+            if n['content_id'] not in num_name_id_mappings:
+                num_name_id_mappings[n['content_id']] = len(num_name_id_mappings)
+            n['content_id'] = num_name_id_mappings[n['content_id']]
         num_name_id_mappings = [(num_name_id_mappings[name], name) for name in num_name_id_mappings]
 
-        node_data = [struct.pack('>H', n[0]) for n in nodes]
-        node_data += [struct.pack('>B', n[1]) for n in nodes]
-        node_data += [struct.pack('>B', n[2]) for n in nodes]
+        node_data = [struct.pack('>H', n['content_id']) for n in nodes]
+        node_data += [struct.pack('>B', n['param1']) for n in nodes]
+        node_data += [struct.pack('>B', n['param2']) for n in nodes]
         node_data = b''.join(node_data)
 
         block += zlib.compress(node_data)
@@ -289,10 +292,10 @@ if __name__ == '__main__':
     for x in range(-2, 2):
         for y in range(-2, 2):
             for z in range(-3, 3):
-                nodes = [['default:stone', 0, 0] for i in range(16*16*16)]
+                nodes = np.zeros((4096, ), dtype=mw.BLOCK_NUMPY_DTYPE)
+                nodes[:] = ('default:stone', 0, 0)
 
                 block = mw.build_map_block(nodes)
-
                 mw.write_block(x, y, z, block)
 
     mw.close_sql_connections()

@@ -174,7 +174,6 @@ def main():  # TODO: map is flopped on X axis!!!
                         f.write(json.dumps(block_list))
 
                 dt.parse_df_blocks(region_pos, block_list['mapBlocks'])
-            dt.dump_mt_blocks()
 
     # print('Processing DF EmbarkTiles..')
     #
@@ -191,7 +190,12 @@ def main():  # TODO: map is flopped on X axis!!!
     #
     #         dt.dump_mt_blocks()
 
+    print('Completing partial blocks')
+
     dt.complete_mt_blocks()
+
+    print('Saving blocks to database')
+
     dt.dump_mt_blocks()
 
     print('-------------------------------------------')
