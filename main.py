@@ -2,16 +2,77 @@
 # encoding: utf-8
 from dfhack_rpc import DFHackRPC
 from minetest_world import MinetestWorld
-from block_transformer import BlockTransformer
+from dwarftest_transformer import DwarftestTransformer
 
 import logging
 import argparse
+import json
+import os
+import shutil
 
 
-def main():
+def main():  # TODO: map is flopped on X axis!!!
+    parser = argparse.ArgumentParser(
+        description='Dwarftest'
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        help='Debug debug level')
+    parser.add_argument(
+        '--save_dump',
+        action='store_true',
+    )
+    parser.add_argument(
+        '--load_dump',
+        action='store_true',
+    )
+    parser.add_argument(
+        '--skip_material_build',
+        action='store_true',
+    )
+    parser.add_argument(
+        '--path',
+        default='./build',
+    )
+    args = parser.parse_args()
+
     logging.basicConfig()
     _logger = logging.getLogger()
-    _logger.setLevel(logging.WARNING)
+
+    if args.debug:
+        _logger.setLevel(logging.DEBUG)
+    else:
+        _logger.setLevel(logging.WARNING)
+
+    # Init dump directories
+
+    path_dump_blocks = './dump/blocks'
+    if args.save_dump and not os.path.exists(path_dump_blocks):
+        os.makedirs(path_dump_blocks)
+
+    # Init build directory
+
+    print('Init build directory')
+
+    path_games = os.path.join(args.path, 'games')
+    if not os.path.exists(path_games):
+        os.makedirs(path_games)
+
+    path_worlds = os.path.join(args.path, 'worlds')
+    if not os.path.exists(path_worlds):
+        os.makedirs(path_worlds)
+
+    path_games_dwarftest = os.path.join(path_games, 'dwarftest')
+    if not os.path.exists(path_games_dwarftest):
+        shutil.copytree(
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), 'templates/game'),
+            path_games_dwarftest
+        )
+
+    print('-------------------------------------------')
+
+    # Init DFHack RPC
 
     rpc = DFHackRPC()
     rpc.bind_all_methods()
@@ -37,7 +98,8 @@ def main():
     print('World: ', end='')
     map_info, _ = rpc.call_method('GetMapInfo')
     # print(map_info)
-    print('{} ({}) [{}]'.format(map_info.world_name, map_info.world_name_english, map_info.save_name))
+    world_name = '{} - {} - {}'.format(map_info.world_name, map_info.world_name_english, map_info.save_name)
+    print(world_name)
 
     print('Embark: ', end='')
     embark_info, _ = rpc.call_method('GetEmbarkInfo')
@@ -49,15 +111,7 @@ def main():
     if not embark_info.available:
         raise Exception('Embark is not available')
 
-    print('-------------------------------------------')
-
-    # Get block types
-
-    print('Getting block types etc..')
-
-    enums, _ = rpc.call_method_dict('ListEnums')
-    material_list, _ = rpc.call_method_dict('GetMaterialList')
-    tiletype_list, _ = rpc.call_method_dict('GetTiletypeList')
+    print('Getting WorldMap...')
     world_map, _ = rpc.call_method('GetWorldMap')
     # print(world_map)
 
@@ -67,30 +121,74 @@ def main():
 
     print('Init of Minetest world and block transformer..')
 
-    mw = MinetestWorld('./world', allow_overwrite=True)
-    bt = BlockTransformer(mw, df_region_offset=(world_map.center_x, world_map.center_y, world_map.center_z))
+    path_world = os.path.join(path_worlds, world_name)
+    mw = MinetestWorld(path_world, allow_overwrite=True)
+    dt = DwarftestTransformer(mw, df_region_offset=(world_map.center_x, world_map.center_y, world_map.center_z))
+
+    print('-------------------------------------------')
+
+    # Get block types
+
+    print('Getting block types etc..')
+
+    # enums, _ = rpc.call_method_dict('ListEnums')
+    material_list, _ = rpc.call_method_dict('GetMaterialList')
+    # tiletype_list, _ = rpc.call_method_dict('GetTiletypeList')
+
+    dt.load_df_material_list(material_list['materialList'])
+
+    if not args.skip_material_build:
+        dt.build_material_mod()
 
     print('-------------------------------------------')
 
     # process tiles/nodes
 
-    print('Processing DF EmbarkTiles..')
+    print('Processing DF Blocks...')
 
-    for x in range(embark_info.region_size_x):
-        for y in range(embark_info.region_size_y):
-            print('EmbarkTile x={} y={}'.format(x, y))
+    region_pos = (map_info.block_pos_x, map_info.block_pos_y, map_info.block_pos_z)
+    for x in range(map_info.block_size_x):
+        for y in range(map_info.block_size_y):
+            print('Block x={} y={} z=0-{}'.format(x, y, map_info.block_size_z))
 
-            embark_tile, text = rpc.call_method_dict('GetEmbarkTile', {'wantX': x, 'wantY': y})
-            if not embark_tile.get('isValid'):
-                raise Exception('EmbarkTile is not valid')
+            # NOTE: reading more than 16*16*1=256 tiles causes problems
+            for z in range(map_info.block_size_z):
+                path_dump_blocks_this = os.path.join(path_dump_blocks, '{}_{}_{}.json'.format(x, y, z))
 
-            region_pos = (embark_tile['worldX'], embark_tile['worldY'], embark_tile['worldZ'])
-            bt.parse_df_tile_layers(region_pos, embark_tile['tileLayer'])
+                if args.load_dump:
+                    with open(path_dump_blocks_this, 'r') as f:
+                        block_list = json.loads(f.read())
+                else:
+                    block_list, _ = rpc.call_method_dict('GetBlockList', {
+                        # 'blocksNeeded': 1,
+                        'minX': x, 'maxX': x+1,
+                        'minY': y, 'maxY': y+1,
+                        'minZ': z, 'maxZ': z+1,
+                    })
+                if args.save_dump:
+                    with open(path_dump_blocks_this, 'w') as f:
+                        f.write(json.dumps(block_list))
 
-            bt.dump_mt_blocks()
+                dt.parse_df_blocks(region_pos, block_list['mapBlocks'])
+            dt.dump_mt_blocks()
 
-    bt.complete_mt_blocks()
-    bt.dump_mt_blocks()
+    # print('Processing DF EmbarkTiles..')
+    #
+    # for x in range(embark_info.region_size_x):
+    #     for y in range(embark_info.region_size_y):
+    #         print('EmbarkTile x={} y={}'.format(x, y))
+    #
+    #         embark_tile, text = rpc.call_method_dict('GetEmbarkTile', {'wantX': x, 'wantY': y})
+    #         if not embark_tile.get('isValid'):
+    #             raise Exception('EmbarkTile is not valid')
+    #
+    #         region_pos = (embark_tile['worldX'], embark_tile['worldY'], embark_tile['worldZ'])
+    #         dt.parse_df_tile_layers(region_pos, embark_tile['tileLayer'])
+    #
+    #         dt.dump_mt_blocks()
+
+    dt.complete_mt_blocks()
+    dt.dump_mt_blocks()
 
     print('-------------------------------------------')
 

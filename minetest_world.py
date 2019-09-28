@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import os
+import shutil
 import sqlite3
 import struct
 import zlib
@@ -47,7 +48,11 @@ class MinetestWorld(object):
     """
     https://github.com/minetest/minetest/blob/master/doc/world_format.txt
     !Warning! Documentation in world_format is outdated/incorrect
+
+    Incorrect light/shadow problems can be fixed by running:
+        \fixlight (x1, y1, z1) (x2, y2, z2)
     """
+    TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), './templates/world')
 
     # Open/Close
 
@@ -63,7 +68,7 @@ class MinetestWorld(object):
         if os.path.exists(path) and not allow_overwrite:
             raise Exception('Path already exists')
         if not os.path.exists(path):
-            os.makedirs(self.path)
+            shutil.copytree(self.TEMPLATE_PATH, self.path)
 
         # init text files
 

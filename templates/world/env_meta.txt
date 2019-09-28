@@ -1,0 +1,3 @@
+game_time = 12000
+time_of_day = 12000
+EnvArgsEnd

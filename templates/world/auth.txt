@@ -1,0 +1,1 @@
+singleplayer::server, shout, fly, password, bring, kick, teleport, ban, noclip, debug, privs, fast, basic_privs, zoom, give, protection_bypass, rollback, settime, interact
