@@ -15,7 +15,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), './DFHackRPC'))
 from dfhack_rpc import DFHackRPC
 
 
-def main():  # TODO: map is flopped on X axis!!!
+def main():  # TODO: map is flipped on X axis!!!
     parser = argparse.ArgumentParser(
         description='Dwarftest'
     )
@@ -38,6 +38,10 @@ def main():  # TODO: map is flopped on X axis!!!
     parser.add_argument(
         '--skip_block_build',
         action='store_true',
+    )
+    parser.add_argument(
+        '--additional_tile_z_offset',
+        type=int, default=37
     )
     parser.add_argument(
         '--path',
@@ -127,15 +131,17 @@ def main():  # TODO: map is flopped on X axis!!!
 
     # Init Minetest world and block transformer
 
-    print('Init of Minetest world and block transformer..')
+    print('Init of Minetest world and Dwarftest transformer..')
+
+    df_region_offset = (world_map.center_x, world_map.center_y, world_map.center_z + args.additional_tile_z_offset)
+    print('df_region_offset = {}'.format(df_region_offset))
+
+    complex_block_scale = {'tile_x': 2, 'tile_y': 2, 'tile_z_floor': 1, 'tile_z_wall': 2}
+    print('complex_block_scale = {}'.format(complex_block_scale))
 
     path_world = os.path.join(path_worlds, world_name)
     mw = MinetestWorld(path_world, allow_overwrite=True)
-    dt = DwarftestTransformer(
-        mw,
-        df_region_offset=(world_map.center_x, world_map.center_y, world_map.center_z),
-        complex_block_scale={'tile_x': 2, 'tile_y': 2, 'tile_z_floor': 1, 'tile_z_wall': 2}
-    )
+    dt = DwarftestTransformer(mw, df_region_offset=df_region_offset, complex_block_scale=complex_block_scale)
 
     print('-------------------------------------------')
 
@@ -214,7 +220,7 @@ def main():  # TODO: map is flopped on X axis!!!
 
         dt.dump_mt_blocks()
 
-    print('-------------------------------------------')
+        print('-------------------------------------------')
 
     # save world + close connection
 

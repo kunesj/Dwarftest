@@ -97,14 +97,22 @@ class MinetestWorld(object):
     # Init world files
 
     def init_auth_txt(self):
-        with open(os.path.join(self.path, 'auth.txt'), 'w') as f:
+        path = os.path.join(self.path, 'auth.txt')
+        if os.path.exists(path):
+            return
+
+        with open(path, 'w') as f:
             f.write(
                 'singleplayer::server, shout, fly, password, bring, kick, teleport, ban, noclip, debug, '
                 'privs, fast, basic_privs, zoom, give, protection_bypass, rollback, settime, interact\n'
             )
 
     def init_env_meta_txt(self):
-        with open(os.path.join(self.path, 'env_meta.txt'), 'w') as f:
+        path = os.path.join(self.path, 'env_meta.txt')
+        if os.path.exists(path):
+            return
+
+        with open(path, 'w') as f:
             f.write(
                 'game_time = 12000\n'
                 'time_of_day = 12000\n'
@@ -112,15 +120,27 @@ class MinetestWorld(object):
             )
 
     def init_ipban_txt(self):
-        with open(os.path.join(self.path, 'ipban.txt'), 'w') as f:
+        path = os.path.join(self.path, 'ipban.txt')
+        if os.path.exists(path):
+            return
+
+        with open(path, 'w') as f:
             f.write('\n')
 
     def init_map_meta_txt(self):
-        with open(os.path.join(self.path, 'map_meta.txt'), 'w') as f:
+        path = os.path.join(self.path, 'map_meta.txt')
+        if os.path.exists(path):
+            return
+
+        with open(path, 'w') as f:
             f.write('[end_of_params]\n')
 
     def init_world_mt(self):
-        with open(os.path.join(self.path, 'world.mt'), 'w') as f:
+        path = os.path.join(self.path, 'world.mt')
+        if os.path.exists(path):
+            return
+
+        with open(path, 'w') as f:
             f.write(
                 'gameid = {}\n'
                 'creative_mode = true\n'
@@ -194,7 +214,6 @@ class MinetestWorld(object):
         block += struct.pack('>B', 2)
 
         # zlib-compressed node data
-
 
         num_name_id_mappings = {}
         for n in nodes:

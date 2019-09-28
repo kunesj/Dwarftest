@@ -107,21 +107,30 @@ class DwarftestTransformer(object):
         return mt_pos
 
     def mt2mt_block_pos(self, mt_pos):
-        mt_block_pos = (
+        mt_block_pos = [
             int(mt_pos[0] / self.MT_BLOCK_NODE_SIZE[0]),
             int(mt_pos[1] / self.MT_BLOCK_NODE_SIZE[1]),
             int(mt_pos[2] / self.MT_BLOCK_NODE_SIZE[2]),
-        )
-        mt_block_node_pos = (
+        ]
+
+        mt_block_node_pos = [
             int(mt_pos[0] - mt_block_pos[0] * self.MT_BLOCK_NODE_SIZE[0]),
             int(mt_pos[1] - mt_block_pos[1] * self.MT_BLOCK_NODE_SIZE[1]),
             int(mt_pos[2] - mt_block_pos[2] * self.MT_BLOCK_NODE_SIZE[2]),
-        )
+        ]
+
+        if mt_block_node_pos[0] < 0:
+            mt_block_node_pos[0] = mt_block_node_pos[0] + self.MT_BLOCK_NODE_SIZE[0]
+        if mt_block_node_pos[1] < 0:
+            mt_block_node_pos[1] = mt_block_node_pos[1] + self.MT_BLOCK_NODE_SIZE[1]
+        if mt_block_node_pos[2] < 0:
+            mt_block_node_pos[2] = mt_block_node_pos[2] + self.MT_BLOCK_NODE_SIZE[2]
+
         mt_block_node_index = mt_block_node_pos[0] + \
             (mt_block_node_pos[1] * self.MT_BLOCK_NODE_SIZE[1]) + \
             (mt_block_node_pos[2] * self.MT_BLOCK_NODE_SIZE[0]*self.MT_BLOCK_NODE_SIZE[1])
 
-        return mt_block_pos, mt_block_node_pos, mt_block_node_index
+        return tuple(mt_block_pos), tuple(mt_block_node_pos), mt_block_node_index
 
     # block manipulation
 
@@ -146,7 +155,8 @@ class DwarftestTransformer(object):
 
         # detect out of range
         if mt_block_node_index >= self.mt_blocks[mt_block_pos].size or mt_block_node_index < 0:
-            raise Exception('Node index {} is out of range!'.format(mt_block_node_index))
+            raise Exception('Node index {} is out of range! [mt_pos={}, mt_block_pos={}, mt_block_node_pos={}]'.format(
+                mt_block_node_index, mt_pos, mt_block_pos, mt_block_node_pos))
 
         # set node value
         self.mt_blocks[mt_block_pos][mt_block_node_index] = val
