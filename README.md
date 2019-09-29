@@ -1,7 +1,8 @@
 # DwarfTest
 
-Tool for converting Dwarf Fortress map into Minetest map
+Tool for converting Dwarf Fortress map into Minetest map. Screenshots are in `doc` folder.
 
+![Preview](doc/screenshots/0002_textures_and_2x2x3_scale.png)
 
 ## Known Issues
 
@@ -18,6 +19,8 @@ Running `\fixlight (0,0,0) (1000,1000,1000)` in Minetest should fix that.
 #### Dwarf Fortress
 
 DFHackRPC is used for communication
+
+https://github.com/kunesj/DFHackRPC
 
 #### Minetest
 
