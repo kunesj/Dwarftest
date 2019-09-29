@@ -41,7 +41,7 @@ def main():  # TODO: map is flipped on X axis!!!
     )
     parser.add_argument(
         '--additional_tile_z_offset',
-        type=int, default=37
+        type=int, default=37, help='Default is 37'
     )
     parser.add_argument(
         '--path',
@@ -157,10 +157,6 @@ def main():  # TODO: map is flipped on X axis!!!
     tiletype_list, _ = rpc.call_method_dict('GetTiletypeList')
     dt.load_df_tiletype_list(tiletype_list['tiletypeList'])
 
-    if not args.skip_material_build:
-        print('Building material mod')
-        dt.build_material_mod()
-
     print('-------------------------------------------')
 
     # process tiles/nodes
@@ -220,6 +216,13 @@ def main():  # TODO: map is flipped on X axis!!!
 
         dt.dump_mt_blocks()
 
+        print('-------------------------------------------')
+
+    # build material mod
+
+    if not args.skip_material_build:
+        print('Building material mod')
+        dt.build_material_mod()
         print('-------------------------------------------')
 
     # save world + close connection

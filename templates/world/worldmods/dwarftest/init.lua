@@ -325,19 +325,122 @@ material_list = minetest.parse_json(material_list_json)
 --minetest.log("error", minetest.serialize(material_list));
 
 for i = 1, #material_list do
+--	minetest.log("error", minetest.serialize(material_list[i]));
 	local mat = material_list[i]
-	local tex_name = mat.mt_id:gsub("%:", "_")..".png"
 
-	minetest.register_node(mat.mt_id, {
-		description = mat.name,
-		tiles = {tex_name},
-		-- https://rubenwardy.com/minetest_modding_book/en/items/nodes_items_crafting.html#tools-capabilities-and-dig-types
-		groups = {
-			oddly_breakable_by_hand = 1,
-		},
-		is_ground_content = false, -- If True, allows cave generation to replace it
-		sounds = dwarftest.node_sound_hard(),
-	})
+	-- get base material texture
+
+	local base_tex
+	local mod_tex
+
+	if mat.mt_node == nil or mat.mt_node.material == nil then
+		base_tex = "dwarftest_template_empty.png"
+	else  -- stone, soil, ice, wood, mushroom, grass, smooth, leaves
+		base_tex = string.format("dwarftest_template_%s.png", mat.mt_node.material)
+	end
+
+	if mat.mt_node ~= nil and mat.mt_node.shape == "stair" then
+		base_tex = ""
+		mod_tex = "dwarftest_template_stair.png"
+	elseif mat.mt_node ~= nil and mat.mt_node.shape == "fortification" then
+		base_tex = ""
+		mod_tex = "dwarftest_template_fortification.png"
+	else
+		mod_tex = ""
+	end
+
+	local tex_name = string.format(
+		"%s%s^[colorize:#%02x%02x%02x80", base_tex, mod_tex, mat.color[1], mat.color[2], mat.color[3]
+	)
+
+	-- get sound
+
+	local sound_fcn
+
+	if mat.mt_node ~= nil and mat.mt_node.material == "soil" then
+		sound_fcn = dwarftest.node_sound_dirt
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "stone" then
+		sound_fcn = dwarftest.node_sound_hard
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "ice" then
+		sound_fcn = dwarftest.node_sound_hard
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "wood" then
+		sound_fcn = dwarftest.node_sound_wood
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "mushroom" then
+		sound_fcn = dwarftest.node_sound_wood
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "grass" then
+		sound_fcn = dwarftest.node_sound_grass
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "smooth" then
+		sound_fcn = dwarftest.node_sound_hard
+	elseif mat.mt_node ~= nil and mat.mt_node.material == "leaves" then
+		sound_fcn = dwarftest.node_sound_leaves
+	else
+		sound_fcn = dwarftest.node_sound_dirt
+	end
+
+	-- create node based on its shape
+
+	if mat.mt_node ~= nil and mat.mt_node.shape == "stair" then
+
+		minetest.register_node(mat.mt_id, {
+			description = mat.name,
+			drawtype = "glasslike",
+			tiles = {tex_name},
+			paramtype = "light",
+			groups = {
+				oddly_breakable_by_hand = 1,
+			},
+			is_ground_content = false,
+			sunlight_propagates = true,
+			walkable = false,
+			climbable = true,
+			post_effect_color = {r=mat.color[1], g=mat.color[2], b=mat.color[3], a=64},
+			sounds = sound_fcn(),
+		})
+
+	elseif mat.mt_node ~= nil and mat.mt_node.shape == "fortification" then
+
+		minetest.register_node(mat.mt_id, {
+			description = mat.name,
+			drawtype = "glasslike",
+			tiles = {tex_name},
+			paramtype = "light",
+			groups = {
+				oddly_breakable_by_hand = 1,
+			},
+			is_ground_content = false,
+			sunlight_propagates = true,
+			sounds = sound_fcn(),
+		})
+
+	elseif mat.mt_node ~= nil and mat.mt_node.shape == "leaves" then
+
+		minetest.register_node(mat.mt_id, {
+			description = mat.name,
+			drawtype = "allfaces_optional",
+			visual_scale = 1.3,
+			tiles = {tex_name},
+			paramtype = "light",
+			groups = {
+				oddly_breakable_by_hand = 1,
+			},
+			is_ground_content = false,
+			sounds = sound_fcn(),
+		})
+
+	else -- normal wall
+
+		minetest.register_node(mat.mt_id, {
+			description = mat.name,
+			tiles = {tex_name},
+			groups = {
+				oddly_breakable_by_hand = 1,
+			},
+			is_ground_content = false,
+			sounds = sound_fcn(),
+		})
+
+	end
+
 end
 
 ---

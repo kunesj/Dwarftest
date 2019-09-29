@@ -6,7 +6,8 @@ import logging
 import json
 import re
 import numpy as np
-from PIL import Image  # Pillow package
+import copy
+import hashlib
 
 _logger = logging.getLogger(__name__)
 
@@ -66,19 +67,21 @@ class DwarftestTransformer(object):
             'name': 'air',
             'color': (0, 0, 0),
             'df_id': 'AIR',
+            'df_tuple': (-1, -1),
             'mt_id': self.MT_AIR_CONTENT_ID,
         }
         self.material_list.append(mt_air_mat)
-        self.material_df_lookup[(-1, -1)] = mt_air_mat
+        self.material_df_lookup[mt_air_mat['df_tuple']] = mt_air_mat
 
         mt_unknown_mat = {
             'name': 'unknown',
             'color': (0, 0, 0),
             'df_id': 'UNKNOWN',
+            'df_tuple': (None, None),
             'mt_id': self.MT_UNKNOWN_CONTENT_ID,
         }
         self.material_list.append(mt_unknown_mat)
-        self.material_df_lookup[(None, None)] = mt_unknown_mat
+        self.material_df_lookup[mt_unknown_mat['df_tuple']] = mt_unknown_mat
 
     # coordinates conversions
 
@@ -217,7 +220,7 @@ class DwarftestTransformer(object):
             if df_mat.get('stateColor'):
                 mat_color = (df_mat['stateColor']['red'], df_mat['stateColor']['green'], df_mat['stateColor']['blue'])
             else:
-                mat_color = None
+                mat_color = (255, 0, 255)
 
             mat_type = df_mat.get('matPair', {}).get('matType')
             mat_type_str = df_mat['id'].split(':')[0]
@@ -230,13 +233,14 @@ class DwarftestTransformer(object):
                 'name': df_mat.get('name'),
                 'color': mat_color,
                 'df_id': df_mat['id'],
+                'df_tuple': (mat_type, mat_subtype),
                 'mt_id': self.MT_CONTENT_ID_PREFIX + re.sub(r'[^a-zA-Z0-9_]', '_', df_mat['id']).lower(),
             }
 
             # save material definition
 
             self.material_list.append(mt_mat)
-            self.material_df_lookup[(mat_type, mat_subtype)] = mt_mat
+            self.material_df_lookup[mt_mat['df_tuple']] = mt_mat
 
     def build_material_mod(self):
         # get paths
@@ -262,28 +266,28 @@ class DwarftestTransformer(object):
         with open(dwarftest_mod_material_list_path, 'w') as f:
             f.write(json.dumps(material_list))
 
-        # generate node textures
-
-        for mat in material_list:
-            mat_type_str = mat['df_id'].split(':')[0]
-
-            # init base color image
-            pixel_data = np.zeros((16, 16, 4), dtype=np.uint8)
-            pixel_data[:, :, 0] = mat['color'][0] if mat['color'] else 255
-            pixel_data[:, :, 1] = mat['color'][1] if mat['color'] else 255
-            pixel_data[:, :, 2] = mat['color'][2] if mat['color'] else 255
-            pixel_data[:, :, 3] = 255
-            img = Image.fromarray(pixel_data, 'RGBA')
-
-            # apply template
-            template_name = mat_type_str + '.png'
-            # TODO
-            # img = Image.open(stream)
-            # img.paste(new_layer, (0, 0), new_layer)
-
-            # save image
-            tex_name = mat['mt_id'].replace(':', '_') + '.png'
-            img.save(os.path.join(dwarftest_mod_textures_path, tex_name))
+        # # generate node textures
+        #
+        # for mat in material_list:
+        #     mat_type_str = mat['df_id'].split(':')[0]
+        #
+        #     # init base color image
+        #     pixel_data = np.zeros((16, 16, 4), dtype=np.uint8)
+        #     pixel_data[:, :, 0] = mat['color'][0] if mat['color'] else 255
+        #     pixel_data[:, :, 1] = mat['color'][1] if mat['color'] else 255
+        #     pixel_data[:, :, 2] = mat['color'][2] if mat['color'] else 255
+        #     pixel_data[:, :, 3] = 255
+        #     img = Image.fromarray(pixel_data, 'RGBA')
+        #
+        #     # apply template
+        #     template_name = mat_type_str + '.png'
+        #     # TODO
+        #     # img = Image.open(stream)
+        #     # img.paste(new_layer, (0, 0), new_layer)
+        #
+        #     # save image
+        #     tex_name = mat['mt_id'].replace(':', '_') + '.png'
+        #     img.save(os.path.join(dwarftest_mod_textures_path, tex_name))
 
     def get_material(self, mat_dict=None, mat_tuple=None):
         if mat_dict:
@@ -296,41 +300,149 @@ class DwarftestTransformer(object):
             _logger.error('Could not find material for {}'.format(mat_tuple))
             return self.material_df_lookup[(None, None)]
 
+    def get_tile_material(self, material, tiletype, ignore_air=True):
+        """
+        https://github.com/DFHack/dfhack/blob/master/plugins/proto/RemoteFortressReader.proto#L47
+
+        material: base material we will use to create it's variant
+
+        tiletype['shape']: NO_SHAPE, EMPTY, FLOOR, BOULDER, PEBBLES, WALL, FORTIFICATION, STAIR_UP, STAIR_DOWN, STAIR_UPDOWN,
+            RAMP, RAMP_TOP, BROOK_BED, BROOK_TOP, TREE_SHAPE, SAPLING, SHRUB, ENDLESS_PIT, BRANCH, TRUNK_BRANCH, TWIG
+
+        tiletype['special']: NO_SPECIAL, NORMAL, RIVER_SOURCE, WATERFALL, SMOOTH, FURROWED, WET, DEAD, WORN_1, WORN_2, WORN_3,
+            TRACK, SMOOTH_DEAD
+
+        tiletype['material']: NO_MATERIAL, AIR, SOIL, STONE, FEATURE, LAVA_STONE, MINERAL, FROZEN_LIQUID, CONSTRUCTION,
+            GRASS_LIGHT, GRASS_DARK, GRASS_DRY, GRASS_DEAD, PLANT, HFS, CAMPFIRE, FIRE, ASHES, MAGMA, DRIFTWOOD, POOL,
+            BROOK, RIVER, ROOT, TREE_MATERIAL, MUSHROOM, UNDERWORLD_GATE
+
+        tiletype['variant']: NO_VARIANT, VAR_1, VAR_2, VAR_3, VAR_4
+        """
+        if ignore_air and material['mt_id'] == self.MT_AIR_CONTENT_ID:
+            return None
+
+        tile_mat = copy.deepcopy(material)
+        tile_mat['df_tile'] = {
+            'shape': tiletype['shape'],
+            'special': tiletype['special'],
+            'material': tiletype['material'],
+            'variant': tiletype['variant'],
+        }
+
+        tile_mat_string = ';'.join(['{}={}'.format(key, tile_mat['df_tile'][key]) for key in tile_mat['df_tile'].keys()])
+        tile_mat_hash = hashlib.sha1(tile_mat_string.encode('utf-8')).hexdigest()
+
+        # update name and ids
+
+        tile_mat['df_tuple'] = tuple(list(tile_mat['df_tuple']) + [tile_mat_hash, ])
+        tile_mat['df_id'] += '*{}'.format(tile_mat_string)
+        tile_mat['name'] += ' ({})'.format(tile_mat_string)
+        tile_mat['mt_id'] += '__{}'.format(tile_mat_hash)
+
+        # # generate MT tile info
+
+        tile_mat['mt_node'] = {}
+
+        # node type
+        if tiletype['shape'] in ['FLOOR', 'BOULDER', 'PEBBLES', 'WALL', 'BROOK_BED', 'TREE_SHAPE', 'SAPLING', 'SHRUB', 'ENDLESS_PIT']:
+            tile_mat['mt_node']['shape'] = 'wall'
+        elif tiletype['shape'] in ['STAIR_UP', 'STAIR_DOWN', 'STAIR_UPDOWN', 'RAMP', 'RAMP_TOP']:
+            tile_mat['mt_node']['shape'] = 'stair'
+        elif tiletype['shape'] in ['FORTIFICATION']:
+            tile_mat['mt_node']['shape'] = 'fortification'
+        elif tiletype['shape'] in ['BRANCH', 'TRUNK_BRANCH', 'TWIG']:
+            tile_mat['mt_node']['shape'] = 'leaves'
+        else:  # 'NONE', 'EMPTY', 'BROOK_TOP'
+            tile_mat['mt_node']['shape'] = None
+
+        # node texture
+        if tiletype['material'] in ['STONE', 'LAVA_STONE', 'MINERAL']:
+            tile_mat['mt_node']['material'] = 'stone'
+        elif tiletype['material'] in ['SOIL', ]:
+            tile_mat['mt_node']['material'] = 'soil'
+        elif tiletype['material'] in ['FROZEN_LIQUID', ]:
+            tile_mat['mt_node']['material'] = 'ice'
+        elif tiletype['material'] in ['ROOT', 'TREE_MATERIAL', 'DRIFTWOOD']:
+            tile_mat['mt_node']['material'] = 'wood'
+        elif tiletype['material'] in ['MUSHROOM', ]:
+            tile_mat['mt_node']['material'] = 'mushroom'
+        elif tiletype['material'] in ['PLANT', 'GRASS_LIGHT', 'GRASS_DARK', 'GRASS_DRY', 'GRASS_DEAD']:
+            tile_mat['mt_node']['material'] = 'grass'
+        elif tiletype['material'] in ['CONSTRUCTION', ]:
+            tile_mat['mt_node']['material'] = 'smooth'
+        else:  # NO_MATERIAL, AIR, CAMPFIRE, FIRE, ASHES, MAGMA, POOL, BROOK, RIVER, FEATURE, 'HFS', 'UNDERWORLD_GATE'
+            tile_mat['mt_node']['material'] = None
+
+        # if tiletype['special'] == 'SMOOTH':
+        #     tile_mat['mt_node']['material'] = 'smooth'
+        if tile_mat['mt_node']['shape'] == 'leaves':
+            tile_mat['mt_node']['material'] = 'leaves'
+
+        # return created/found material version
+
+        if tile_mat['df_tuple'] not in self.material_df_lookup:
+            self.material_list.append(tile_mat)
+            self.material_df_lookup[tile_mat['df_tuple']] = tile_mat
+
+        return self.material_df_lookup[tile_mat['df_tuple']]
+
     # parse DF map
 
     def df_tile_to_mt_nodes(self, tiletype, material, water_height, lava_height):
         """
-        DF tile includes info about wall-level and floor-level. roof-level is defined by floor-level of tile above it. (maybe?)
+        DF tile includes info about wall-level and floor-level. roof-level is defined by floor-level of tile above it.
 
         This function should eventually be used to generate other shapes than just wall/floor.
-
-        Useful sources:
-            https://github.com/DFHack/dfhack/blob/8a1979b8a7aecee299c0d74720ee37eeaef9fee5/plugins/reveal.cpp#L331
 
         :returns: [(node_pos_difference, mt_node), ...]
         """
         converted_nodes = []
+
+        self.get_tile_material(material, tiletype)
 
         #
         # Detect shape
         #
 
         # Walls
-        if tiletype['shape'] in ['WALL', 'FORTIFICATION', ]:
-            fill_wall = True
-            fill_floor = True
-            # TODO: fortification should change block "variant" to something "transparent"
+        if tiletype['shape'] in ['WALL', 'TREE_SHAPE', ]:
+            fill_wall = self.get_tile_material(material, tiletype)
+            fill_floor = fill_wall
+
+        # Fortifications
+        elif tiletype['shape'] in ['FORTIFICATION', ]:
+            fill_wall = self.get_tile_material(material, tiletype)
+            fill_floor = self.get_tile_material(material, dict(tiletype, shape='FLOOR'))
 
         # Open space
-        elif tiletype['shape'] in ['NONE', 'EMPTY', 'RAMP_TOP', 'STAIR_UPDOWN', 'STAIR_DOWN', 'BROOK_TOP']:
-            fill_wall = False
-            fill_floor = False
+        elif tiletype['shape'] in ['NONE', 'EMPTY', 'BROOK_TOP']:
+            fill_wall = None
+            fill_floor = None
 
         # Floors
-        elif tiletype['shape'] in ['STAIR_UP', 'RAMP', 'FLOOR', 'BRANCH', 'TRUNK_BRANCH', 'TWIG',
-                                   'SAPLING', 'SHRUB', 'BOULDER', 'PEBBLES', 'BROOK_BED', 'ENDLESS_PIT']:
-            fill_wall = False
-            fill_floor = True
+        elif tiletype['shape'] in ['FLOOR', 'SAPLING', 'SHRUB', 'BOULDER', 'PEBBLES', 'BROOK_BED', 'ENDLESS_PIT']:
+            fill_wall = None
+            fill_floor = self.get_tile_material(material, tiletype)
+
+        # Tree leaves
+        elif tiletype['shape'] in ['BRANCH', 'TRUNK_BRANCH', 'TWIG']:
+            fill_wall = self.get_tile_material(material, tiletype)
+            fill_floor = fill_wall
+
+        # Stair Up / Ramp
+        elif tiletype['shape'] in ['STAIR_UP', 'RAMP']:
+            fill_wall = self.get_tile_material(material, tiletype)
+            fill_floor = self.get_tile_material(material, dict(tiletype, shape='FLOOR'))
+
+        # Stair Down / Ramp Top
+        elif tiletype['shape'] in ['STAIR_DOWN', 'RAMP_TOP']:
+            fill_wall = None
+            fill_floor = self.get_tile_material(material, tiletype)
+
+        # Stair Up Down
+        elif tiletype['shape'] in ['STAIR_UPDOWN']:
+            fill_wall = self.get_tile_material(material, tiletype)
+            fill_floor = fill_wall
 
         else:
             raise Exception('Unexpected tile shape "{}"'.format(tiletype['shape']))
@@ -340,7 +452,7 @@ class DwarftestTransformer(object):
         #
 
         if fill_wall:
-            wall_content_id = material['mt_id']
+            wall_content_id = fill_wall['mt_id']
         elif water_height:
             wall_content_id = self.MT_WATER_CONTENT_ID
         elif lava_height:
@@ -349,7 +461,7 @@ class DwarftestTransformer(object):
             wall_content_id = self.MT_AIR_CONTENT_ID
 
         if fill_floor:
-            floor_content_id = material['mt_id']
+            floor_content_id = fill_floor['mt_id']
         elif water_height:
             floor_content_id = self.MT_WATER_CONTENT_ID
         elif lava_height:
@@ -438,7 +550,7 @@ class DwarftestTransformer(object):
 
                 converted_nodes = self.df_tile_to_mt_nodes(tiletype, mat, water_height, lava_height)
 
-                # set nudes
+                # set nodes
 
                 tile_pos = (
                     int(i % self.DF_BLOCK_TILE_SIZE[0]) + block['mapX'],

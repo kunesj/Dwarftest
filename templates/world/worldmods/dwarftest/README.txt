@@ -39,6 +39,9 @@ Textures
 Cisoun's texture pack (CC BY-SA 3.0):
   dwarftest_lava.png
   dwarftest_water.png
+  dwarftest_template_leaves.png
+  dwarftest_template_stone.png
+  dwarftest_template_wood.png
 
 BlockMen (CC BY-SA 3.0):
   dwarftest_lava_source_animated.png
@@ -50,6 +53,14 @@ RealBadAngel's animated water (CC BY-SA 3.0):
 
 paramat (CC BY-SA 3.0):
   wieldhand.png -- Copied from character.png by Jordach (CC BY-SA 3.0)
+  dwarftest_template_grass.png
+
+Neuromancer (CC BY-SA 3.0):
+  dwarftest_template_soil.png
+  dwarftest_template_mushroom.png
+
+asl97 (CC BY-SA 3.0):
+  dwarftest_template_ice.png
 
 BlockMen (CC BY-SA 3.0):
   bubble.png
@@ -62,6 +73,10 @@ celeron55, Perttu Ahola <celeron55@gmail.com> (CC BY-SA 3.0):
     player.png
     player_back.png
     treeprop.png
+
+kilbith (CC BY-SA 3.0):
+  dwarftest_template_smooth.png
+
 
 
 
