@@ -178,7 +178,7 @@ class DwarftestTransformer(object):
         for mt_block_pos in self.mt_blocks:
             if self.mt_blocks[mt_block_pos] is None:
                 continue
-            if None in self.mt_blocks[mt_block_pos]['content_id']:
+            if any(x is None for x in self.mt_blocks[mt_block_pos]['content_id']):
                 continue
 
             _logger.debug('Saving block {} into database'.format(mt_block_pos))

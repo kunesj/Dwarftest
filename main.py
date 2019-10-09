@@ -86,8 +86,12 @@ def main():  # TODO: map is flipped on X axis!!!
 
     # Init DFHack RPC
 
-    rpc = DFHackRPC()
-    rpc.bind_all_methods()
+    try:
+        rpc = DFHackRPC()
+        rpc.bind_all_methods()
+    except Exception:
+        _logger.exception('Init of DFHack API connection failed!')
+        return 1
 
     # Print versions
 

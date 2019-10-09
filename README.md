@@ -52,3 +52,5 @@ https://github.com/kunesj/DFHackRPC
 https://rubenwardy.com/minetest_modding_book/en/basics/getting_started.html
 https://github.com/minetest/minetest/blob/master/doc/lua_api.txt
 
+To enable fly tun `/grant singleplayer all` and turn on by pressing `k`.
+
