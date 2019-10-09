@@ -4,6 +4,30 @@ Tool for converting Dwarf Fortress map into Minetest map. Screenshots are in `do
 
 ![Preview](doc/screenshots/0002_textures_and_2x2x3_scale.png)
 
+
+## Install
+
+Get source code
+
+```
+https://github.com/kunesj/Dwarftest.git
+cd Dwarftest
+git submodule update --init --recursive
+```
+
+Install dependencies
+
+```
+sudo pip3 install protobuf numpy
+```
+
+Test run
+
+```
+python3 main.py --help
+```
+
+
 ## Known Issues
 
 ### "List of block materials has invalid length! Try to restart Dwarf Fortress."
@@ -13,6 +37,7 @@ Restarting Dwarf Fortress should fix this. If anyone knows why it happens, pleas
 ### Everything is in shadow
 
 Running `\fixlight (0,0,0) (1000,1000,1000)` in Minetest should fix that.
+
 
 ## Development Resources
 
